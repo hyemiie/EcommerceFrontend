@@ -21,7 +21,7 @@ from flask_migrate import Migrate
 
 app = Flask(__name__)
 # app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'  
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgres://avnadmin:AVNS_-_U-3SCh3ZqL6Ql7VQB@tierbackend-db-yemiojedapo1-1449.k.aivencloud.com:12825/defaultdb?sslmode=require"
+app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://avnadmin:AVNS_-_U-3SCh3ZqL6Ql7VQB@tierbackend-db-yemiojedapo1-1449.k.aivencloud.com:12825/defaultdb?sslmode=require"
 # app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://tier_user:R1Jm8lPVucA19TvVgmZoJbhClWxyN6aA@dpg-cnl2fkol5elc73dopl7g-a.oregon-postgres.render.com/tier'
  
 app.config['SECRET_KEY'] = os.getenv('AppSecretKey' ) 
@@ -400,77 +400,187 @@ def get_name():
 #     with app.app_context():
 #         db.create_all()
 
+@app.route('/api/products/bulk-create', methods=['POST'])
+def create_products():
+    """
+    Create multiple products from a list
+    Expects JSON format:
+    {
+        "products": [
+            {
+                "productName": "Product 1",
+                "productImage": "image_url",
+                "productPrice": "100.00",
+                "productDesc": "Description"
+            },
+            ...
+        ]
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'products' not in data:
+            return jsonify({
+                'success': False,
+                'message': 'No products data provided',
+                'error': 'Invalid request format'
+            }), 400
+
+        products_data = data['products']
+        created_products = []
+        errors = []
+
+        for product_data in products_data:
+            # Validate required fields
+            required_fields = ['productName', 'productImage', 'productPrice', 'productDesc']
+            missing_fields = [field for field in required_fields if field not in product_data]
+            
+            if missing_fields:
+                errors.append({
+                    'product': product_data.get('productName', 'Unknown'),
+                    'error': f'Missing required fields: {", ".join(missing_fields)}'
+                })
+                continue
+
+            try:
+                # Check if product already exists
+                existing_product = Products.query.filter_by(
+                    productName=product_data['productName']
+                ).first()
+
+                if existing_product:
+                    errors.append({
+                        'product': product_data['productName'],
+                        'error': 'Product with this name already exists'
+                    })
+                    continue
+
+                # Create new product
+                new_product = Products(
+                    productName=product_data['productName'],
+                    productImage=product_data['productImage'],
+                    productPrice=product_data['productPrice'],
+                    productDesc=product_data['productDesc']
+                )
+                
+                db.session.add(new_product)
+                db.session.flush()  # Flush to get the ID without committing
+                
+                created_products.append(new_product.to_dict())
+
+            except Exception as e:
+                errors.append({
+                    'product': product_data.get('productName', 'Unknown'),
+                    'error': str(e)
+                })
+
+        if created_products:
+            db.session.commit()
+
+        # Prepare response
+        response = {
+            'success': True if created_products else False,
+            'message': f'Successfully created {len(created_products)} products',
+            'created_products': created_products,
+        }
+        
+        if errors:
+            response['errors'] = errors
+
+        status_code = 201 if created_products else 400
+        return jsonify(response), status_code
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': 'Failed to create products',
+            'error': str(e)
+        }), 500
+
 if __name__ == "__main__":
     with app.app_context():
+        # Create all tables
         db.create_all()
+        
+        # Seed initial data
+        seed_products()
     
-    port = int(os.env.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
-
+    # Get port from environment variable or use default
+    port = int(os.environ.get('PORT', 10000))
+    
+    # Run the app
+    app.run(host='0.0.0.0', port=port, debug=True)    
         # Populate Products table
         # new_Cart = Cart( productID = 2, productName= 'LunaGlow Serum', productQuantity= 3  )
         # db.session.add(new_Cart)
         # db.session.commit()
 
-        # new_product = Products(  productName= 'LunaGlow Serum' , productImage='images/product (2).png', productPrice='1900.00', productDesc='A lightweight, fast-absorbing serum infused with moonflower extract and vitamin C to brighten and even skin tone overnight.'  )
-        # db.session.add(new_product)
-        # db.session.commit()
+#         new_product = Products(  productName= 'LunaGlow Serum' , productImage='images/product (2).png', productPrice='1900.00', productDesc='A lightweight, fast-absorbing serum infused with moonflower extract and vitamin C to brighten and even skin tone overnight.'  )
+#         db.session.add(new_product)
+#         db.session.commit()
 
-        # new_product = Products(  productName= 'AquaFresh Moisture Lock' , productImage='images/product (3).png', productPrice='700.00', productDesc=' A deeply hydrating cream that creates a protective barrier, locking in moisture for up to 48 hours while allowing skin to breathe.' )
-        # db.session.add(new_product)
-        # db.session.commit()
+#         new_product = Products(  productName= 'AquaFresh Moisture Lock' , productImage='images/product (3).png', productPrice='700.00', productDesc=' A deeply hydrating cream that creates a protective barrier, locking in moisture for up to 48 hours while allowing skin to breathe.' )
+#         db.session.add(new_product)
+#         db.session.commit()
 
-        # new_product = Products(  productName= 'NovaSkin Rejuvenator' , productImage='images/product (4).png', productPrice='820.00', productDesc='An advanced anti-aging treatment combining retinol and peptides to minimize fine lines and improve skin elasticity'  )
-        # db.session.add(new_product)
-        # db.session.commit()
+#         new_product = Products(  productName= 'NovaSkin Rejuvenator' , productImage='images/product (4).png', productPrice='820.00', productDesc='An advanced anti-aging treatment combining retinol and peptides to minimize fine lines and improve skin elasticity'  )
+#         db.session.add(new_product)
+#         db.session.commit()
 
-        # new_product = Products(  productName= 'Bloom Face Mist' , productImage='images/product (5).png', productPrice='79000.00', productDesc='A refreshing botanical mist made with rose water and aloe vera to hydrate and revitalize skin throughout the day.'  )
-        # db.session.add(new_product)
-        # db.session.commit()
-
-
-        # new_product = Products(productName= 'PureBalance Toner' , productImage='images/product (6).png', productPrice='21000.00', productDesc='An alcohol-free toner that restores skins natural pH balance and preps it for better absorption of subsequent skincare products.')
-        # db.session.add(new_product)
-        # db.session.commit()
+#         new_product = Products(  productName= 'Bloom Face Mist' , productImage='images/product (5).png', productPrice='79000.00', productDesc='A refreshing botanical mist made with rose water and aloe vera to hydrate and revitalize skin throughout the day.'  )
+#         db.session.add(new_product)
+#         db.session.commit()
 
 
-        # new_product = Products(  productName= 'HydraBoost Essence' , productImage='images/product (7).png', productPrice='92000.00', productDesc='A concentrated essence with multiple types of hyaluronic acid to provide deep, long-lasting hydration and plump the skin.'  )
-        # db.session.add(new_product)
-        # db.session.commit()
-
-        # new_product = Products(  productName= 'ZenDerm Calming Cream' , productImage='images/product1.png', productPrice='8000.00', productDesc='Formulated with chamomile and green tea extracts to soothe irritated skin and reduce redness, perfect for sensitive skin types.'  )
-        # db.session.add(new_product)
-        # db.session.commit()
+#         new_product = Products(productName= 'PureBalance Toner' , productImage='images/product (6).png', productPrice='21000.00', productDesc='An alcohol-free toner that restores skins natural pH balance and preps it for better absorption of subsequent skincare products.')
+#         db.session.add(new_product)
+#         db.session.commit()
 
 
+#         new_product = Products(  productName= 'HydraBoost Essence' , productImage='images/product (7).png', productPrice='92000.00', productDesc='A concentrated essence with multiple types of hyaluronic acid to provide deep, long-lasting hydration and plump the skin.'  )
+#         db.session.add(new_product)
+#         db.session.commit()
+
+#         new_product = Products(  productName= 'ZenDerm Calming Cream' , productImage='images/product1.png', productPrice='8000.00', productDesc='Formulated with chamomile and green tea extracts to soothe irritated skin and reduce redness, perfect for sensitive skin types.'  )
+#         db.session.add(new_product)
+#         db.session.commit()
 
 
 
 
-        # new_product = CartProducts( productID=6, user_id=5, productName= 'Blue Sofa ' , productImage='../Images//Image6.png', productPrice='17000.00', productDesc='Blue Sofa wih feathery ruffles', productQuantity = 2 )
-        # db.session.add(new_product)
-        # db.session.commit()
+
+
+#         # new_product = CartProducts( productID=6, user_id=5, productName= 'Blue Sofa ' , productImage='../Images//Image6.png', productPrice='17000.00', productDesc='Blue Sofa wih feathery ruffles', productQuantity = 2 )
+#         # db.session.add(new_product)
+#         # db.session.commit()
 
         
-        # new_product = CartProducts(  user_id= 4 ,productName= 'Brows Sofa ' , productImage='images/Image7.jpg', productPrice='19000.00', productDesc='brown Sofa wih feathery ruffles', productQuantity = 2 )
-        # db.session.add(new_product)
-        # db.session.commit()
+#         # new_product = CartProducts(  user_id= 4 ,productName= 'Brows Sofa ' , productImage='images/Image7.jpg', productPrice='19000.00', productDesc='brown Sofa wih feathery ruffles', productQuantity = 2 )
+#         # db.session.add(new_product)
+#         # db.session.commit()
 
-        # new_product = Products( productID= 4, productName= 'Phone Pouch' , productImage=f'images/{image_url}', productPrice='400.00', productDesc='A sleek and stylish Phone Pouch')
-        # db.session.add(new_product)
-        # db.session.commit()
+#         # new_product = Products( productID= 4, productName= 'Phone Pouch' , productImage=f'images/{image_url}', productPrice='400.00', productDesc='A sleek and stylish Phone Pouch')
+#         # db.session.add(new_product)
+#         # db.session.commit()
 
-        # Populate User table
+#         # Populate User table
 
 
-        # db.session.query(Products).delete()
-        # db.session.commit()
+#         # db.session.query(Products).delete()
+#         # db.session.commit()
         
 
-        # db.drop_all()
-        # db.session.commit()
+#         # db.drop_all()
+#         # db.session.commit()
 
-        # db.session.delete(User)
-        # db.commit()
+#         # db.session.delete(User)
+#         # db.commit()
 
-        # app.run(debug=True)
+#         # app.run(debug=True)
+# with app.app_context():
+#         db.create_all()
+    
+# port = int(os.getenv('PORT', 10000))
+# app.run(host='0.0.0.0', port=port)
