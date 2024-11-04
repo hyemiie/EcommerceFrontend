@@ -297,7 +297,7 @@
 #     if request.method == 'POST':
 #         data = request.get_json()
 #         task_name = data['Task']
-#         date_added = data['Date']
+#         date_added = data['Date ']
 #         user_id = get_jwt_identity()  # Retrieve user ID from JWT
 
         
